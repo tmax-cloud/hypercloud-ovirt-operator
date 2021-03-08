@@ -19,6 +19,7 @@ package examples
 import (
 	"fmt"
 	"time"
+
 	ovirtsdk4 "github.com/ovirt/go-ovirt"
 )
 
@@ -48,7 +49,7 @@ func ListVMs() {
 		fmt.Printf("Failed to get vm list, reason: %v\n", err)
 		return
 	}
-	
+
 	if vms, ok := vmsResponse.Vms(); ok {
 		// Print the virtual machine names and identifiers:
 		for _, vm := range vms.Slice() {
