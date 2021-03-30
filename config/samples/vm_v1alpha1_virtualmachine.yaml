@@ -1,0 +1,7 @@
+apiVersion: vm.tmaxcloud.com/v1alpha1
+kind: VirtualMachine
+metadata:
+  name: virtualmachine-sample
+spec:
+  # Add fields here
+  foo: bar
