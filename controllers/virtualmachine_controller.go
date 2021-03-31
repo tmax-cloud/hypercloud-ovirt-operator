@@ -20,9 +20,12 @@ import (
 	"context"
 
 	"github.com/go-logr/logr"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 
 	vmv1alpha1 "github.com/tmax-cloud/hypercloud-ovirt-operator/api/v1alpha1"
 )
@@ -48,9 +51,39 @@ type VirtualMachineReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.7.2/pkg/reconcile
 func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = r.Log.WithValues("virtualmachine", req.NamespacedName)
+	log := r.Log.WithValues("virtualmachine", req.NamespacedName)
+	log.Info("Reconciling VirtualMachine")
 
-	// your logic here
+	// Fetch the VirtualMachine instance
+	vm := &vmv1alpha1.VirtualMachine{}
+	err := r.Get(ctx, req.NamespacedName, vm)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			// Request object not found, could have been deleted after reconcile request.
+			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
+			// Return and don't requeue
+			log.Info("VirtualMachine resource not found. Ignoring since object must be deleted")
+			return ctrl.Result{}, nil
+		}
+		// Error reading the object - requeue the request.
+		log.Error(err, "Failed to get VirtualMachine")
+		return ctrl.Result{}, err
+	}
+
+	// Check if the VirtualMachine already exists, if not create a new one
+	found := &vmv1alpha1.VirtualMachine{}
+	err = r.Get(ctx, types.NamespacedName{Name: vm.Name, Namespace: vm.Namespace}, found)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			log.Info("Creating a new VirtualMachine", "VirtualMachine.Namespace", "VirtualMachine.Name")
+
+			// VirtualMachine created successfully - return and requeue
+			return ctrl.Result{Requeue: true}, nil
+		}
+
+		log.Error(err, "Failed to get VirtualMachine")
+		return ctrl.Result{}, err
+	}
 
 	return ctrl.Result{}, nil
 }
@@ -59,5 +92,6 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 func (r *VirtualMachineReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&vmv1alpha1.VirtualMachine{}).
+		WithOptions(controller.Options{MaxConcurrentReconciles: 2}).
 		Complete(r)
 }

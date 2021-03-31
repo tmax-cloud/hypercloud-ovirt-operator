@@ -2,6 +2,7 @@ apiVersion: vm.tmaxcloud.com/v1alpha1
 kind: VirtualMachine
 metadata:
   name: virtualmachine-sample
-spec:
+#spec:
   # Add fields here
-  foo: bar
+  #template: ubuntu-18.04-cloudimg
+
