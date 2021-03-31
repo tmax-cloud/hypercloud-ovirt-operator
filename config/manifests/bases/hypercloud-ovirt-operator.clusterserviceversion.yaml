@@ -1,0 +1,47 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  annotations:
+    alm-examples: '[]'
+    capabilities: Basic Install
+  name: hypercloud-ovirt-operator.v0.0.0
+  namespace: placeholder
+spec:
+  apiservicedefinitions: {}
+  customresourcedefinitions:
+    owned:
+    - description: VirtualMachine is the Schema for the virtualmachines API
+      displayName: Virtual Machine
+      kind: VirtualMachine
+      name: virtualmachines.vm.tmaxcloud.com
+      version: v1alpha1
+  description: hypercloud ovirt operator
+  displayName: hypercloud-ovirt-operator
+  icon:
+  - base64data: ""
+    mediatype: ""
+  install:
+    spec:
+      deployments: null
+    strategy: ""
+  installModes:
+  - supported: false
+    type: OwnNamespace
+  - supported: false
+    type: SingleNamespace
+  - supported: false
+    type: MultiNamespace
+  - supported: true
+    type: AllNamespaces
+  keywords:
+  - ovirt
+  - hypercloud
+  - hypercloud-ovirt-operator
+  links:
+  - name: Hypercloud Ovirt Operator
+    url: https://hypercloud-ovirt-operator.domain
+  maturity: alpha
+  provider:
+    name: hypercloud5.0
+    url: https://www.tmaxcloud.com/
+  version: 0.0.0
