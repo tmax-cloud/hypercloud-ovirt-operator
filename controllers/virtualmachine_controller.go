@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -30,6 +31,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 
 	vmv1alpha1 "github.com/tmax-cloud/hypercloud-ovirt-operator/api/v1alpha1"
+)
+
+var (
+	// TODO: remove the URL link
+	inputRawURL = "https://node1.test.dom/ovirt-engine/api"
+	// TODO: secure the password
+	pass = "1"
 )
 
 // VirtualMachineReconciler reconciles a VirtualMachine object
@@ -65,6 +73,11 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if err != nil {
 		if errors.IsNotFound(err) {
 			log.Info("Creating a new VirtualMachine", "vm.Name", vm.Name)
+			/*err = r.addVM(vm.Name)
+			if err != nil {
+				log.Error(err, "Failed to create new VirtualMachine", "vm.Name", vm.Name)
+				return ctrl.Result{}, err
+			}*/
 			// VirtualMachine created successfully - return and requeue
 			return ctrl.Result{Requeue: true}, nil
 		}
@@ -78,13 +91,11 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 }
 
 func (r *VirtualMachineReconciler) getVM(name string) error {
-	log := r.Log.WithName("virtualmachine").WithName("ovirt sdk")
-	inputRawURL := "https://node1.test.dom/ovirt-engine/api" // TODO: remove the URL link
-
+	log := r.Log.WithName("ovirt")
 	conn, err := ovirtsdk4.NewConnectionBuilder().
 		URL(inputRawURL).
 		Username("admin@internal").
-		Password("1"). // TODO: secure the password
+		Password(pass).
 		Insecure(true).
 		Compress(true).
 		Timeout(time.Second * 10).
@@ -111,6 +122,59 @@ func (r *VirtualMachineReconciler) getVM(name string) error {
 	}
 
 	return errors.NewNotFound(schema.GroupResource{}, name)
+}
+
+func (r *VirtualMachineReconciler) addVM(name string) error {
+	log := r.Log.WithName("ovirt")
+	conn, err := ovirtsdk4.NewConnectionBuilder().
+		URL(inputRawURL).
+		Username("admin@internal").
+		Password(pass).
+		Insecure(true).
+		Compress(true).
+		Timeout(time.Second * 10).
+		Build()
+	if err != nil {
+		log.Error(err, "Make connection failed")
+		return err
+	}
+	defer conn.Close()
+
+	// To use `Must` methods, you should recover it if panics
+	defer func() {
+		if err := recover(); err != nil {
+			fmt.Printf("Panics occurs, try the non-Must methods to find the reason")
+		}
+	}()
+
+	vmsService := conn.SystemService().VmsService()
+	resp, err := vmsService.Add().
+		Vm(
+			ovirtsdk4.NewVmBuilder().
+				Name("myvm1").
+				Cluster(
+					ovirtsdk4.NewClusterBuilder().
+						Name("Default").
+						MustBuild()).
+				Template(
+					ovirtsdk4.NewTemplateBuilder().
+						Name("ubuntu-18.04-cloudimg").
+						MustBuild()).
+				MustBuild()).
+		Send()
+
+	if err != nil {
+		log.Error(err, "Failed to add vm")
+		return err
+	}
+
+	if vm, ok := resp.Vm(); ok {
+		log.Info("Add vm successfully", "vm.Name", vm.Name)
+	}
+
+	log.Info("nil response") // fix
+
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
