@@ -18,7 +18,6 @@ package controllers
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -73,11 +72,11 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if err != nil {
 		if errors.IsNotFound(err) {
 			log.Info("Creating a new VirtualMachine", "vm.Name", vm.Name)
-			/*err = r.addVM(vm.Name)
+			err = r.addVM(vm.Name, vm.Spec.Template)
 			if err != nil {
 				log.Error(err, "Failed to create new VirtualMachine", "vm.Name", vm.Name)
 				return ctrl.Result{}, err
-			}*/
+			}
 			// VirtualMachine created successfully - return and requeue
 			return ctrl.Result{Requeue: true}, nil
 		}
@@ -91,7 +90,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 }
 
 func (r *VirtualMachineReconciler) getVM(name string) error {
-	log := r.Log.WithName("ovirt")
+	log := r.Log.WithValues("ovirt", "getVM")
 	conn, err := ovirtsdk4.NewConnectionBuilder().
 		URL(inputRawURL).
 		Username("admin@internal").
@@ -107,25 +106,21 @@ func (r *VirtualMachineReconciler) getVM(name string) error {
 	defer conn.Close()
 
 	vmsService := conn.SystemService().VmsService()
-	vmsResponse, err := vmsService.List().Send()
-
+	vmsResponse, err := vmsService.List().Search("name=" + name).Send()
 	if err != nil {
 		log.Error(err, "Failed to get vm list")
 		return err
 	}
-	if vms, ok := vmsResponse.Vms(); ok {
-		for _, vm := range vms.Slice() {
-			if vmName, ok := vm.Name(); ok && vmName == name {
-				return nil
-			}
-		}
+	vms, _ := vmsResponse.Vms()
+	if vm := vms.Slice(); vm != nil {
+		return nil
 	}
 
 	return errors.NewNotFound(schema.GroupResource{}, name)
 }
 
-func (r *VirtualMachineReconciler) addVM(name string) error {
-	log := r.Log.WithName("ovirt")
+func (r *VirtualMachineReconciler) addVM(vmName string, vmTemplate string) error {
+	log := r.Log.WithValues("ovirt", "addVM")
 	conn, err := ovirtsdk4.NewConnectionBuilder().
 		URL(inputRawURL).
 		Username("admin@internal").
@@ -140,39 +135,34 @@ func (r *VirtualMachineReconciler) addVM(name string) error {
 	}
 	defer conn.Close()
 
-	// To use `Must` methods, you should recover it if panics
-	defer func() {
-		if err := recover(); err != nil {
-			fmt.Printf("Panics occurs, try the non-Must methods to find the reason")
-		}
-	}()
-
 	vmsService := conn.SystemService().VmsService()
-	resp, err := vmsService.Add().
-		Vm(
-			ovirtsdk4.NewVmBuilder().
-				Name("myvm1").
-				Cluster(
-					ovirtsdk4.NewClusterBuilder().
-						Name("Default").
-						MustBuild()).
-				Template(
-					ovirtsdk4.NewTemplateBuilder().
-						Name("ubuntu-18.04-cloudimg").
-						MustBuild()).
-				MustBuild()).
-		Send()
-
+	cluster, err := ovirtsdk4.NewClusterBuilder().Name("Default").Build()
+	if err != nil {
+		log.Error(err, "Failed to build cluster")
+		return err
+	}
+	if vmTemplate == "" {
+		vmTemplate = "Blank"
+	}
+	template, err := ovirtsdk4.NewTemplateBuilder().Name(vmTemplate).Build()
+	if err != nil {
+		log.Error(err, "Failed to build template")
+		return err
+	}
+	vm, err := ovirtsdk4.NewVmBuilder().Name(vmName).Cluster(cluster).Template(template).Build()
+	if err != nil {
+		log.Error(err, "Failed to build vm")
+		return err
+	}
+	resp, err := vmsService.Add().Vm(vm).Send()
 	if err != nil {
 		log.Error(err, "Failed to add vm")
 		return err
 	}
 
-	if vm, ok := resp.Vm(); ok {
-		log.Info("Add vm successfully", "vm.Name", vm.Name)
-	}
-
-	log.Info("nil response") // fix
+	vm, _ = resp.Vm()
+	name, _ := vm.Name()
+	log.Info("Add vm successfully", "vm.Name", name)
 
 	return nil
 }
