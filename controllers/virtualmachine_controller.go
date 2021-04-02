@@ -18,16 +18,25 @@ package controllers
 
 import (
 	"context"
+	"time"
 
 	"github.com/go-logr/logr"
+	ovirtsdk4 "github.com/ovirt/go-ovirt"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 
 	vmv1alpha1 "github.com/tmax-cloud/hypercloud-ovirt-operator/api/v1alpha1"
+)
+
+var (
+	// TODO: remove the URL link
+	inputRawURL = "https://node1.test.dom/ovirt-engine/api"
+	// TODO: secure the password
+	pass = "1"
 )
 
 // VirtualMachineReconciler reconciles a VirtualMachine object
@@ -41,42 +50,33 @@ type VirtualMachineReconciler struct {
 //+kubebuilder:rbac:groups=vm.tmaxcloud.com,resources=virtualmachines/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=vm.tmaxcloud.com,resources=virtualmachines/finalizers,verbs=update
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the VirtualMachine object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.7.2/pkg/reconcile
 func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("virtualmachine", req.NamespacedName)
 	log.Info("Reconciling VirtualMachine")
 
-	// Fetch the VirtualMachine instance
 	vm := &vmv1alpha1.VirtualMachine{}
 	err := r.Get(ctx, req.NamespacedName, vm)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			// Request object not found, could have been deleted after reconcile request.
-			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
-			// Return and don't requeue
 			log.Info("VirtualMachine resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		// Error reading the object - requeue the request.
 		log.Error(err, "Failed to get VirtualMachine")
 		return ctrl.Result{}, err
 	}
 
 	// Check if the VirtualMachine already exists, if not create a new one
-	found := &vmv1alpha1.VirtualMachine{}
-	err = r.Get(ctx, types.NamespacedName{Name: vm.Name, Namespace: vm.Namespace}, found)
+	err = r.getVM(vm.Name)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("Creating a new VirtualMachine", "VirtualMachine.Namespace", "VirtualMachine.Name")
-
+			log.Info("Creating a new VirtualMachine", "vm.Name", vm.Name)
+			err = r.addVM(vm.Name, vm.Spec.Template)
+			if err != nil {
+				log.Error(err, "Failed to create new VirtualMachine", "vm.Name", vm.Name)
+				return ctrl.Result{}, err
+			}
 			// VirtualMachine created successfully - return and requeue
 			return ctrl.Result{Requeue: true}, nil
 		}
@@ -84,8 +84,87 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		log.Error(err, "Failed to get VirtualMachine")
 		return ctrl.Result{}, err
 	}
+	log.Info("VirtualMachine exists", "vm.Name", vm.Name)
 
 	return ctrl.Result{}, nil
+}
+
+func (r *VirtualMachineReconciler) getVM(name string) error {
+	log := r.Log.WithValues("ovirt", "getVM")
+	conn, err := ovirtsdk4.NewConnectionBuilder().
+		URL(inputRawURL).
+		Username("admin@internal").
+		Password(pass).
+		Insecure(true).
+		Compress(true).
+		Timeout(time.Second * 10).
+		Build()
+	if err != nil {
+		log.Error(err, "Make connection failed")
+		return err
+	}
+	defer conn.Close()
+
+	vmsService := conn.SystemService().VmsService()
+	vmsResponse, err := vmsService.List().Search("name=" + name).Send()
+	if err != nil {
+		log.Error(err, "Failed to get vm list")
+		return err
+	}
+	vms, _ := vmsResponse.Vms()
+	if vm := vms.Slice(); vm != nil {
+		return nil
+	}
+
+	return errors.NewNotFound(schema.GroupResource{}, name)
+}
+
+func (r *VirtualMachineReconciler) addVM(vmName string, vmTemplate string) error {
+	log := r.Log.WithValues("ovirt", "addVM")
+	conn, err := ovirtsdk4.NewConnectionBuilder().
+		URL(inputRawURL).
+		Username("admin@internal").
+		Password(pass).
+		Insecure(true).
+		Compress(true).
+		Timeout(time.Second * 10).
+		Build()
+	if err != nil {
+		log.Error(err, "Make connection failed")
+		return err
+	}
+	defer conn.Close()
+
+	vmsService := conn.SystemService().VmsService()
+	cluster, err := ovirtsdk4.NewClusterBuilder().Name("Default").Build()
+	if err != nil {
+		log.Error(err, "Failed to build cluster")
+		return err
+	}
+	if vmTemplate == "" {
+		vmTemplate = "Blank"
+	}
+	template, err := ovirtsdk4.NewTemplateBuilder().Name(vmTemplate).Build()
+	if err != nil {
+		log.Error(err, "Failed to build template")
+		return err
+	}
+	vm, err := ovirtsdk4.NewVmBuilder().Name(vmName).Cluster(cluster).Template(template).Build()
+	if err != nil {
+		log.Error(err, "Failed to build vm")
+		return err
+	}
+	resp, err := vmsService.Add().Vm(vm).Send()
+	if err != nil {
+		log.Error(err, "Failed to add vm")
+		return err
+	}
+
+	vm, _ = resp.Vm()
+	name, _ := vm.Name()
+	log.Info("Add vm successfully", "vm.Name", name)
+
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
