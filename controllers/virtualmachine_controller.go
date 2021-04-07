@@ -28,6 +28,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	vmv1alpha1 "github.com/tmax-cloud/hypercloud-ovirt-operator/api/v1alpha1"
 )
@@ -69,40 +70,39 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
-	/*
-			// Check if the VM instance is marked to be deleted, which is
-			// indicated by the deletion timestamp being set.
-			isVmMarkedToBeDeleted := vm.GetDeletionTimestamp() != nil
-			if isVmMarkedToBeDeleted {
-				if controllerutil.ContainsFinalizer(vm, virtualMachineFinalizer) {
-					// Run finalization logic for virtualMachineFinalizer. If the
-					// finalization logic fails, don't remove the finalizer so
-					// that we can retry during the next reconciliation.
-					if err := r.finalizeVm(reqLogger, vm); err != nil {
-						reqLogger.Error(err, "Failed to finalize VirtualMachine")
-						return ctrl.Result{}, err
-					}
-
-					// Remove virtualMachineFinalizer. Once all finalizers have been
-					// removed, the object will be deleted.
-					controllerutil.RemoveFinalizer(vm, virtualMachineFinalizer)
-					err := r.Update(ctx, vm)
-					if err != nil {
-						reqLogger.Error(err, "Failed to remove finalizer from VirtualMachine")
-						return ctrl.Result{}, err
-					}
-				}
-				return ctrl.Result{}, nil
-			}
-
-		// Add finalizer for this CR
-		if !controllerutil.ContainsFinalizer(vm, virtualMachineFinalizer) {
-			controllerutil.AddFinalizer(vm, virtualMachineFinalizer)
-			err = r.Update(ctx, vm)
-			if err != nil {
+	// Check if the VM instance is marked to be deleted, which is
+	// indicated by the deletion timestamp being set.
+	isVmMarkedToBeDeleted := vm.GetDeletionTimestamp() != nil
+	if isVmMarkedToBeDeleted {
+		if controllerutil.ContainsFinalizer(vm, virtualMachineFinalizer) {
+			// Run finalization logic for virtualMachineFinalizer. If the
+			// finalization logic fails, don't remove the finalizer so
+			// that we can retry during the next reconciliation.
+			if err := r.finalizeVm(reqLogger, vm); err != nil {
+				reqLogger.Error(err, "Failed to finalize VirtualMachine")
 				return ctrl.Result{}, err
 			}
-		}*/
+
+			// Remove virtualMachineFinalizer. Once all finalizers have been
+			// removed, the object will be deleted.
+			controllerutil.RemoveFinalizer(vm, virtualMachineFinalizer)
+			err := r.Update(ctx, vm)
+			if err != nil {
+				reqLogger.Error(err, "Failed to remove finalizer from VirtualMachine")
+				return ctrl.Result{}, err
+			}
+		}
+		return ctrl.Result{}, nil
+	}
+
+	// Add finalizer for this CR
+	if !controllerutil.ContainsFinalizer(vm, virtualMachineFinalizer) {
+		controllerutil.AddFinalizer(vm, virtualMachineFinalizer)
+		err = r.Update(ctx, vm)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+	}
 
 	// Check if the VirtualMachine already exists, if not create a new one
 	err = r.getVM(reqLogger, vm)
@@ -218,25 +218,21 @@ func (r *VirtualMachineReconciler) finalizeVm(reqLogger logr.Logger, m *vmv1alph
 	defer conn.Close()
 
 	vmsService := conn.SystemService().VmsService()
-	vm := vmsService.List().
-		Search("name=myvm").
-		MustSend().
-		MustVms().
-		Slice()[0]
+	vmsResponse, err := vmsService.List().Search("name=" + m.Name).Send()
+	if err != nil {
+		reqLogger.Error(err, "Failed to search vms")
+		return err
+	}
+	vms, _ := vmsResponse.Vms()
+	id, _ := vms.Slice()[0].Id()
+	vmService := vmsService.VmService(id)
+	_, err = vmService.Remove().Send()
+	if err != nil {
+		reqLogger.Error(err, "Failed to remove vm")
+		return err
+	}
 
-	// Note that the "vm" variable that we assigned above contains only the data of the VM, it doesn't have any
-	// method like "remove". Methods are defined in the services. So now that we have the description of the VM
-	// we can find the service that manages it, calling the locator method "vmService" defined in the "vms"
-	// service. This locator method receives as parameter the identifier of the VM and returns a reference to the
-	// service that manages that VM.
-	vmService := vmsService.VmService(vm.MustId())
-
-	// Now that we have the reference to the service that manages the VM we can use it to remove the VM. Note that
-	// this method doesn't need any parameter, as the identifier of the VM is already known by the service that we
-	// located in the previous step.
-	vmService.Remove().MustSend()
-
-	reqLogger.Info("Successfully finalized vm")
+	reqLogger.Info("Remove vm successfully", "vm.Name", m.Name)
 	return nil
 }
 
