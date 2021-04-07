@@ -32,6 +32,8 @@ import (
 	vmv1alpha1 "github.com/tmax-cloud/hypercloud-ovirt-operator/api/v1alpha1"
 )
 
+const virtualMachineFinalizer = "vm.tmaxcloud.com/finalizer"
+
 var (
 	// TODO: remove the URL link
 	inputRawURL = "https://node1.test.dom/ovirt-engine/api"
@@ -53,44 +55,78 @@ type VirtualMachineReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.7.2/pkg/reconcile
 func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("virtualmachine", req.NamespacedName)
-	log.Info("Reconciling VirtualMachine")
+	reqLogger := r.Log.WithValues("virtualmachine", req.NamespacedName)
+	reqLogger.Info("Reconciling VirtualMachine")
 
 	vm := &vmv1alpha1.VirtualMachine{}
 	err := r.Get(ctx, req.NamespacedName, vm)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("VirtualMachine resource not found. Ignoring since object must be deleted")
+			reqLogger.Info("VirtualMachine resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		log.Error(err, "Failed to get VirtualMachine")
+		reqLogger.Error(err, "Failed to get VirtualMachine")
 		return ctrl.Result{}, err
 	}
 
+	/*
+			// Check if the VM instance is marked to be deleted, which is
+			// indicated by the deletion timestamp being set.
+			isVmMarkedToBeDeleted := vm.GetDeletionTimestamp() != nil
+			if isVmMarkedToBeDeleted {
+				if controllerutil.ContainsFinalizer(vm, virtualMachineFinalizer) {
+					// Run finalization logic for virtualMachineFinalizer. If the
+					// finalization logic fails, don't remove the finalizer so
+					// that we can retry during the next reconciliation.
+					if err := r.finalizeVm(reqLogger, vm); err != nil {
+						reqLogger.Error(err, "Failed to finalize VirtualMachine")
+						return ctrl.Result{}, err
+					}
+
+					// Remove virtualMachineFinalizer. Once all finalizers have been
+					// removed, the object will be deleted.
+					controllerutil.RemoveFinalizer(vm, virtualMachineFinalizer)
+					err := r.Update(ctx, vm)
+					if err != nil {
+						reqLogger.Error(err, "Failed to remove finalizer from VirtualMachine")
+						return ctrl.Result{}, err
+					}
+				}
+				return ctrl.Result{}, nil
+			}
+
+		// Add finalizer for this CR
+		if !controllerutil.ContainsFinalizer(vm, virtualMachineFinalizer) {
+			controllerutil.AddFinalizer(vm, virtualMachineFinalizer)
+			err = r.Update(ctx, vm)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+		}*/
+
 	// Check if the VirtualMachine already exists, if not create a new one
-	err = r.getVM(vm.Name)
+	err = r.getVM(reqLogger, vm)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("Creating a new VirtualMachine", "vm.Name", vm.Name)
-			err = r.addVM(vm.Name, vm.Spec.Template)
+			reqLogger.Info("Creating a new VirtualMachine", "vm.Name", vm.Name)
+			err = r.addVM(reqLogger, vm)
 			if err != nil {
-				log.Error(err, "Failed to create new VirtualMachine", "vm.Name", vm.Name)
+				reqLogger.Error(err, "Failed to create new VirtualMachine", "vm.Name", vm.Name)
 				return ctrl.Result{}, err
 			}
 			// VirtualMachine created successfully - return and requeue
 			return ctrl.Result{Requeue: true}, nil
 		}
 
-		log.Error(err, "Failed to get VirtualMachine")
+		reqLogger.Error(err, "Failed to get VirtualMachine")
 		return ctrl.Result{}, err
 	}
-	log.Info("VirtualMachine exists", "vm.Name", vm.Name)
+	reqLogger.Info("VirtualMachine exists", "vm.Name", vm.Name)
 
 	return ctrl.Result{}, nil
 }
 
-func (r *VirtualMachineReconciler) getVM(name string) error {
-	log := r.Log.WithValues("ovirt", "getVM")
+func (r *VirtualMachineReconciler) getVM(reqLogger logr.Logger, m *vmv1alpha1.VirtualMachine) error {
 	conn, err := ovirtsdk4.NewConnectionBuilder().
 		URL(inputRawURL).
 		Username("admin@internal").
@@ -100,15 +136,15 @@ func (r *VirtualMachineReconciler) getVM(name string) error {
 		Timeout(time.Second * 10).
 		Build()
 	if err != nil {
-		log.Error(err, "Make connection failed")
+		reqLogger.Error(err, "Make connection failed")
 		return err
 	}
 	defer conn.Close()
 
 	vmsService := conn.SystemService().VmsService()
-	vmsResponse, err := vmsService.List().Search("name=" + name).Send()
+	vmsResponse, err := vmsService.List().Search("name=" + m.Name).Send()
 	if err != nil {
-		log.Error(err, "Failed to get vm list")
+		reqLogger.Error(err, "Failed to get vm list")
 		return err
 	}
 	vms, _ := vmsResponse.Vms()
@@ -116,11 +152,10 @@ func (r *VirtualMachineReconciler) getVM(name string) error {
 		return nil
 	}
 
-	return errors.NewNotFound(schema.GroupResource{}, name)
+	return errors.NewNotFound(schema.GroupResource{}, m.Name)
 }
 
-func (r *VirtualMachineReconciler) addVM(vmName string, vmTemplate string) error {
-	log := r.Log.WithValues("ovirt", "addVM")
+func (r *VirtualMachineReconciler) addVM(reqLogger logr.Logger, m *vmv1alpha1.VirtualMachine) error {
 	conn, err := ovirtsdk4.NewConnectionBuilder().
 		URL(inputRawURL).
 		Username("admin@internal").
@@ -130,7 +165,7 @@ func (r *VirtualMachineReconciler) addVM(vmName string, vmTemplate string) error
 		Timeout(time.Second * 10).
 		Build()
 	if err != nil {
-		log.Error(err, "Make connection failed")
+		reqLogger.Error(err, "Make connection failed")
 		return err
 	}
 	defer conn.Close()
@@ -138,32 +173,70 @@ func (r *VirtualMachineReconciler) addVM(vmName string, vmTemplate string) error
 	vmsService := conn.SystemService().VmsService()
 	cluster, err := ovirtsdk4.NewClusterBuilder().Name("Default").Build()
 	if err != nil {
-		log.Error(err, "Failed to build cluster")
+		reqLogger.Error(err, "Failed to build cluster")
 		return err
 	}
-	if vmTemplate == "" {
-		vmTemplate = "Blank"
+	if m.Spec.Template == "" {
+		m.Spec.Template = "Blank"
 	}
-	template, err := ovirtsdk4.NewTemplateBuilder().Name(vmTemplate).Build()
+	template, err := ovirtsdk4.NewTemplateBuilder().Name(m.Spec.Template).Build()
 	if err != nil {
-		log.Error(err, "Failed to build template")
+		reqLogger.Error(err, "Failed to build template")
 		return err
 	}
-	vm, err := ovirtsdk4.NewVmBuilder().Name(vmName).Cluster(cluster).Template(template).Build()
+	vm, err := ovirtsdk4.NewVmBuilder().Name(m.Name).Cluster(cluster).Template(template).Build()
 	if err != nil {
-		log.Error(err, "Failed to build vm")
+		reqLogger.Error(err, "Failed to build vm")
 		return err
 	}
 	resp, err := vmsService.Add().Vm(vm).Send()
 	if err != nil {
-		log.Error(err, "Failed to add vm")
+		reqLogger.Error(err, "Failed to add vm")
 		return err
 	}
 
 	vm, _ = resp.Vm()
 	name, _ := vm.Name()
-	log.Info("Add vm successfully", "vm.Name", name)
+	reqLogger.Info("Add vm successfully", "vm.Name", name)
 
+	return nil
+}
+
+func (r *VirtualMachineReconciler) finalizeVm(reqLogger logr.Logger, m *vmv1alpha1.VirtualMachine) error {
+	conn, err := ovirtsdk4.NewConnectionBuilder().
+		URL(inputRawURL).
+		Username("admin@internal").
+		Password(pass).
+		Insecure(true).
+		Compress(true).
+		Timeout(time.Second * 10).
+		Build()
+	if err != nil {
+		reqLogger.Error(err, "Make connection failed")
+		return err
+	}
+	defer conn.Close()
+
+	vmsService := conn.SystemService().VmsService()
+	vm := vmsService.List().
+		Search("name=myvm").
+		MustSend().
+		MustVms().
+		Slice()[0]
+
+	// Note that the "vm" variable that we assigned above contains only the data of the VM, it doesn't have any
+	// method like "remove". Methods are defined in the services. So now that we have the description of the VM
+	// we can find the service that manages it, calling the locator method "vmService" defined in the "vms"
+	// service. This locator method receives as parameter the identifier of the VM and returns a reference to the
+	// service that manages that VM.
+	vmService := vmsService.VmService(vm.MustId())
+
+	// Now that we have the reference to the service that manages the VM we can use it to remove the VM. Note that
+	// this method doesn't need any parameter, as the identifier of the VM is already known by the service that we
+	// located in the previous step.
+	vmService.Remove().MustSend()
+
+	reqLogger.Info("Successfully finalized vm")
 	return nil
 }
 
