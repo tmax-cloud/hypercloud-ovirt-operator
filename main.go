@@ -33,6 +33,7 @@ import (
 
 	vmv1alpha1 "github.com/tmax-cloud/hypercloud-ovirt-operator/api/v1alpha1"
 	"github.com/tmax-cloud/hypercloud-ovirt-operator/controllers"
+	"github.com/tmax-cloud/hypercloud-ovirt-operator/pkg/ovirt"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -79,9 +80,10 @@ func main() {
 	}
 
 	if err = (&controllers.VirtualMachineReconciler{
-		Client: mgr.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("VirtualMachine"),
-		Scheme: mgr.GetScheme(),
+		Client:   mgr.GetClient(),
+		Log:      ctrl.Log.WithName("controllers").WithName("VirtualMachine"),
+		Scheme:   mgr.GetScheme(),
+		Actuator: ovirt.NewActuator(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "VirtualMachine")
 		os.Exit(1)
