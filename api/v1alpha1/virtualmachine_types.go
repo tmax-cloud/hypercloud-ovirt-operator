@@ -28,7 +28,7 @@ type VirtualMachineSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Foo is an example field of VirtualMachine. Edit virtualmachine_types.go to remove/update
+	// Template is a template field of a new VirtualMachine instance.
 	Template string `json:"template,omitempty"`
 }
 

@@ -20,8 +20,10 @@ import (
 	"context"
 
 	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -32,6 +34,8 @@ import (
 )
 
 const virtualMachineFinalizer = "vm.tmaxcloud.com/finalizer"
+
+var ovirtNamespacedName = types.NamespacedName{Name: "ovirt-master", Namespace: "default"}
 
 // VirtualMachineReconciler reconciles a VirtualMachine object
 type VirtualMachineReconciler struct {
@@ -48,19 +52,33 @@ type VirtualMachineReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.7.2/pkg/reconcile
 func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	reqLogger := r.Log.WithValues("virtualmachine", req.NamespacedName)
-	reqLogger.Info("Reconciling VirtualMachine")
+	log := r.Log.WithValues("virtualmachine", req.NamespacedName)
+	log.Info("Reconciling VirtualMachine")
 
 	vm := &vmv1alpha1.VirtualMachine{}
 	err := r.Get(ctx, req.NamespacedName, vm)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			reqLogger.Info("VirtualMachine resource not found. Ignoring since object must be deleted")
+			log.Info("VirtualMachine resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		reqLogger.Error(err, "Failed to get VirtualMachine")
+		log.Error(err, "Failed to get VirtualMachine")
 		return ctrl.Result{}, err
 	}
+
+	secret := &corev1.Secret{}
+	err = r.Get(ctx, ovirtNamespacedName, secret)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			log.Error(err, "Secret not found", "secret", ovirtNamespacedName)
+			return ctrl.Result{}, err
+		}
+		log.Error(err, "Failed to get Secret")
+		return ctrl.Result{}, err
+	}
+
+	// set actuator information
+	r.Actuator.SetActuator(secret)
 
 	// Check if the VM instance is marked to be deleted, which is
 	// indicated by the deletion timestamp being set.
@@ -70,8 +88,8 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			// Run finalization logic for virtualMachineFinalizer. If the
 			// finalization logic fails, don't remove the finalizer so
 			// that we can retry during the next reconciliation.
-			if err := r.Actuator.FinalizeVm(reqLogger, vm); err != nil {
-				reqLogger.Error(err, "Failed to finalize VirtualMachine")
+			if err := r.Actuator.FinalizeVm(log, vm); err != nil {
+				log.Error(err, "Failed to finalize VirtualMachine")
 				return ctrl.Result{}, err
 			}
 
@@ -80,7 +98,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			controllerutil.RemoveFinalizer(vm, virtualMachineFinalizer)
 			err := r.Update(ctx, vm)
 			if err != nil {
-				reqLogger.Error(err, "Failed to remove finalizer from VirtualMachine")
+				log.Error(err, "Failed to remove finalizer from VirtualMachine")
 				return ctrl.Result{}, err
 			}
 		}
@@ -97,23 +115,23 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	// Check if the VirtualMachine already exists, if not create a new one
-	err = r.Actuator.GetVM(reqLogger, vm)
+	err = r.Actuator.GetVM(log, vm)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			reqLogger.Info("Creating a new VirtualMachine", "vm.Name", vm.Name)
-			err = r.Actuator.AddVM(reqLogger, vm)
+			log.Info("Creating a new VirtualMachine", "vm.Name", vm.Name)
+			err = r.Actuator.AddVM(log, vm)
 			if err != nil {
-				reqLogger.Error(err, "Failed to create new VirtualMachine", "vm.Name", vm.Name)
+				log.Error(err, "Failed to create new VirtualMachine", "vm.Name", vm.Name)
 				return ctrl.Result{}, err
 			}
 			// VirtualMachine created successfully - return and requeue
 			return ctrl.Result{Requeue: true}, nil
 		}
 
-		reqLogger.Error(err, "Failed to get VirtualMachine")
+		log.Error(err, "Failed to get VirtualMachine")
 		return ctrl.Result{}, err
 	}
-	reqLogger.Info("VirtualMachine exists", "vm.Name", vm.Name)
+	log.Info("VirtualMachine exists", "vm.Name", vm.Name)
 
 	return ctrl.Result{}, nil
 }
