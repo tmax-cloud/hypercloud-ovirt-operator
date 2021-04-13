@@ -6,6 +6,7 @@ import (
 	"github.com/go-logr/logr"
 	ovirtsdk4 "github.com/ovirt/go-ovirt"
 	vmv1alpha1 "github.com/tmax-cloud/hypercloud-ovirt-operator/api/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -24,12 +25,13 @@ type OvirtActuator struct {
 
 // NewActuator creates new OvirtActuator
 func NewActuator() *OvirtActuator {
-	return &OvirtActuator{
-		conn: nil,
-		url:  "https://node1.test.dom/ovirt-engine/api",
-		name: "admin@internal",
-		pass: "1",
-	}
+	return &OvirtActuator{}
+}
+
+func (actuator *OvirtActuator) SetActuator(secret *corev1.Secret) {
+	actuator.url = string(secret.Data["url"])
+	actuator.name = string(secret.Data["name"])
+	actuator.pass = string(secret.Data["pass"])
 }
 
 func (actuator *OvirtActuator) getConnection() (*ovirtsdk4.Connection, error) {
