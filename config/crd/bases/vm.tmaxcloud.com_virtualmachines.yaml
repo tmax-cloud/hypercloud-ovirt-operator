@@ -37,8 +37,8 @@ spec:
             description: VirtualMachineSpec defines the desired state of VirtualMachine
             properties:
               template:
-                description: Foo is an example field of VirtualMachine. Edit virtualmachine_types.go
-                  to remove/update
+                description: Template is a template field of a new VirtualMachine
+                  instance.
                 type: string
             type: object
           status:
