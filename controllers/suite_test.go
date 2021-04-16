@@ -77,6 +77,7 @@ var _ = BeforeSuite(func() {
 
 	err = (&VirtualMachineReconciler{
 		Client: k8sManager.GetClient(),
+		Scheme: k8sManager.GetScheme(),
 		Log:    ctrl.Log.WithName("controllers").WithName("VirtualMachine"),
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
@@ -85,10 +86,6 @@ var _ = BeforeSuite(func() {
 		err = k8sManager.Start(ctrl.SetupSignalHandler())
 		Expect(err).ToNot(HaveOccurred())
 	}()
-
-	k8sClient = k8sManager.GetClient()
-	Expect(k8sClient).ToNot(BeNil())
-
 }, 60)
 
 var _ = AfterSuite(func() {
