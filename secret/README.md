@@ -14,6 +14,12 @@ stringData:
   pass: <Ovirt Master user password>
 ```
 
+Apply the secret file.
+```
+kubectl apply -f ovirt_secret.yaml
+```
+
+
 ## Reporting Bugs
 
 Use the issue tracker in this repository to report bugs.
