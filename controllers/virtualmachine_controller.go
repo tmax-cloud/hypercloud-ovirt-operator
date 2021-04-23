@@ -22,6 +22,8 @@ import (
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -31,9 +33,25 @@ import (
 
 	vmv1alpha1 "github.com/tmax-cloud/hypercloud-ovirt-operator/api/v1alpha1"
 	"github.com/tmax-cloud/hypercloud-ovirt-operator/pkg/ovirt"
+	vmtypes "github.com/tmax-cloud/hypercloud-ovirt-operator/types"
 )
 
-const virtualMachineFinalizer = "vm.tmaxcloud.com/finalizer"
+const (
+	virtualMachineFinalizer = "vm.tmaxcloud.com/finalizer"
+
+	secretNotFoundReason        = "SecretNotFound"
+	secretNotFoundMessage       = "Ovirt master secret resource is missing"
+	clientGetFailedReason       = "ClientGetFailed"
+	clientGetFailedMessage      = "Kubernetes client Get operation failed"
+	ovirtClientGetFailedReason  = "OvirtClientGetFailed"
+	ovirtClientGetFailedMessage = "Ovirt client Get operation failed"
+	vmAddFailedReason           = "VmAddFailed"
+	vmAddFailedMessage          = "The VM could not be created due to Ovirt Master error"
+	initReason                  = "InitVm"
+	initMessage                 = "Initializing VM resource"
+	vmReadyReason               = "VmReady"
+	vmReadyMessage              = "VM is now ready"
+)
 
 var ovirtNamespacedName = types.NamespacedName{Name: "ovirt-master", Namespace: "default"}
 
@@ -66,11 +84,45 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
+	if vm.Status.Conditions == nil {
+		vm.Status.Conditions = make([]v1.Condition, 0)
+		meta.SetStatusCondition(&vm.Status.Conditions, v1.Condition{
+			Type:    vmtypes.VmReady,
+			Status:  v1.ConditionUnknown,
+			Reason:  initReason,
+			Message: initMessage,
+		})
+		if err = r.Status().Update(ctx, vm); err != nil {
+			log.Error(err, "Failed to update VirtualMachine status")
+			return ctrl.Result{}, err
+		}
+	}
+
 	secret := &corev1.Secret{}
 	err = r.Get(ctx, ovirtNamespacedName, secret)
 	if err != nil {
 		if errors.IsNotFound(err) {
+			meta.SetStatusCondition(&vm.Status.Conditions, v1.Condition{
+				Type:    vmtypes.VmReady,
+				Status:  v1.ConditionFalse,
+				Reason:  secretNotFoundReason,
+				Message: secretNotFoundMessage,
+			})
+			if err = r.Status().Update(ctx, vm); err != nil {
+				log.Error(err, "Failed to update VirtualMachine status")
+				return ctrl.Result{}, err
+			}
 			log.Error(err, "Secret not found", "secret", ovirtNamespacedName)
+			return ctrl.Result{}, err
+		}
+		meta.SetStatusCondition(&vm.Status.Conditions, v1.Condition{
+			Type:    vmtypes.VmReady,
+			Status:  v1.ConditionFalse,
+			Reason:  clientGetFailedReason,
+			Message: clientGetFailedMessage,
+		})
+		if err = r.Status().Update(ctx, vm); err != nil {
+			log.Error(err, "Failed to update VirtualMachine status")
 			return ctrl.Result{}, err
 		}
 		log.Error(err, "Failed to get Secret")
@@ -96,8 +148,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			// Remove virtualMachineFinalizer. Once all finalizers have been
 			// removed, the object will be deleted.
 			controllerutil.RemoveFinalizer(vm, virtualMachineFinalizer)
-			err := r.Update(ctx, vm)
-			if err != nil {
+			if err := r.Update(ctx, vm); err != nil {
 				log.Error(err, "Failed to remove finalizer from VirtualMachine")
 				return ctrl.Result{}, err
 			}
@@ -108,8 +159,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	// Add finalizer for this CR
 	if !controllerutil.ContainsFinalizer(vm, virtualMachineFinalizer) {
 		controllerutil.AddFinalizer(vm, virtualMachineFinalizer)
-		err = r.Update(ctx, vm)
-		if err != nil {
+		if err = r.Update(ctx, vm); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
@@ -121,13 +171,43 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			log.Info("Creating a new VirtualMachine", "vm.Name", vm.Name)
 			err = r.Actuator.AddVM(log, vm)
 			if err != nil {
+				meta.SetStatusCondition(&vm.Status.Conditions, v1.Condition{
+					Type:    vmtypes.VmReady,
+					Status:  v1.ConditionFalse,
+					Reason:  vmAddFailedReason,
+					Message: vmAddFailedMessage,
+				})
+				if err = r.Status().Update(ctx, vm); err != nil {
+					log.Error(err, "Failed to update VirtualMachine status")
+					return ctrl.Result{}, err
+				}
 				log.Error(err, "Failed to create new VirtualMachine", "vm.Name", vm.Name)
+				return ctrl.Result{}, err
+			}
+			meta.SetStatusCondition(&vm.Status.Conditions, v1.Condition{
+				Type:    vmtypes.VmReady,
+				Status:  v1.ConditionTrue,
+				Reason:  vmReadyReason,
+				Message: vmReadyMessage,
+			})
+			if err = r.Status().Update(ctx, vm); err != nil {
+				log.Error(err, "Failed to update VirtualMachine status")
 				return ctrl.Result{}, err
 			}
 			// VirtualMachine created successfully - return and requeue
 			return ctrl.Result{Requeue: true}, nil
 		}
 
+		meta.SetStatusCondition(&vm.Status.Conditions, v1.Condition{
+			Type:    vmtypes.VmReady,
+			Status:  v1.ConditionFalse,
+			Reason:  ovirtClientGetFailedReason,
+			Message: ovirtClientGetFailedMessage,
+		})
+		if err = r.Status().Update(ctx, vm); err != nil {
+			log.Error(err, "Failed to update VirtualMachine status")
+			return ctrl.Result{}, err
+		}
 		log.Error(err, "Failed to get VirtualMachine")
 		return ctrl.Result{}, err
 	}
