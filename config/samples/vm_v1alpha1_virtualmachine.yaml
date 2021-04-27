@@ -3,6 +3,5 @@ kind: VirtualMachine
 metadata:
   name: virtualmachine-sample
 spec:
-  # Add fields here
   template: ubuntu-18.04-cloudimg
 
