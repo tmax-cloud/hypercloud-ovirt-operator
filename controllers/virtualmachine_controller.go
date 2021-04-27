@@ -38,19 +38,6 @@ import (
 
 const (
 	virtualMachineFinalizer = "vm.tmaxcloud.com/finalizer"
-
-	secretNotFoundReason        = "SecretNotFound"
-	secretNotFoundMessage       = "Ovirt master secret resource is missing"
-	clientGetFailedReason       = "ClientGetFailed"
-	clientGetFailedMessage      = "Kubernetes client Get operation failed"
-	ovirtClientGetFailedReason  = "OvirtClientGetFailed"
-	ovirtClientGetFailedMessage = "Ovirt client Get operation failed"
-	vmAddFailedReason           = "VmAddFailed"
-	vmAddFailedMessage          = "The VM could not be created due to Ovirt Master error"
-	initReason                  = "InitVm"
-	initMessage                 = "Initializing VM resource"
-	vmReadyReason               = "VmReady"
-	vmReadyMessage              = "VM is now ready"
 )
 
 var ovirtNamespacedName = types.NamespacedName{Name: "ovirt-master", Namespace: "default"}
@@ -89,8 +76,8 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		meta.SetStatusCondition(&vm.Status.Conditions, v1.Condition{
 			Type:    vmtypes.VmReady,
 			Status:  v1.ConditionUnknown,
-			Reason:  initReason,
-			Message: initMessage,
+			Reason:  "InitVm",
+			Message: "Initializing VM resource",
 		})
 		if err = r.Status().Update(ctx, vm); err != nil {
 			log.Error(err, "Failed to update VirtualMachine status")
@@ -105,8 +92,8 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			meta.SetStatusCondition(&vm.Status.Conditions, v1.Condition{
 				Type:    vmtypes.VmReady,
 				Status:  v1.ConditionFalse,
-				Reason:  secretNotFoundReason,
-				Message: secretNotFoundMessage,
+				Reason:  "SecretNotFound",
+				Message: "Ovirt master secret resource is missing",
 			})
 			if err = r.Status().Update(ctx, vm); err != nil {
 				log.Error(err, "Failed to update VirtualMachine status")
@@ -118,8 +105,8 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		meta.SetStatusCondition(&vm.Status.Conditions, v1.Condition{
 			Type:    vmtypes.VmReady,
 			Status:  v1.ConditionFalse,
-			Reason:  clientGetFailedReason,
-			Message: clientGetFailedMessage,
+			Reason:  "ClientGetFailed",
+			Message: "Kubernetes client Get operation failed",
 		})
 		if err = r.Status().Update(ctx, vm); err != nil {
 			log.Error(err, "Failed to update VirtualMachine status")
@@ -174,8 +161,8 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 				meta.SetStatusCondition(&vm.Status.Conditions, v1.Condition{
 					Type:    vmtypes.VmReady,
 					Status:  v1.ConditionFalse,
-					Reason:  vmAddFailedReason,
-					Message: vmAddFailedMessage,
+					Reason:  "VmAddFailed",
+					Message: "The VM could not be created due to Ovirt Master error",
 				})
 				if err = r.Status().Update(ctx, vm); err != nil {
 					log.Error(err, "Failed to update VirtualMachine status")
@@ -187,8 +174,8 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			meta.SetStatusCondition(&vm.Status.Conditions, v1.Condition{
 				Type:    vmtypes.VmReady,
 				Status:  v1.ConditionTrue,
-				Reason:  vmReadyReason,
-				Message: vmReadyMessage,
+				Reason:  "VmReady",
+				Message: "VM is now ready",
 			})
 			if err = r.Status().Update(ctx, vm); err != nil {
 				log.Error(err, "Failed to update VirtualMachine status")
@@ -201,8 +188,8 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		meta.SetStatusCondition(&vm.Status.Conditions, v1.Condition{
 			Type:    vmtypes.VmReady,
 			Status:  v1.ConditionFalse,
-			Reason:  ovirtClientGetFailedReason,
-			Message: ovirtClientGetFailedMessage,
+			Reason:  "OvirtClientGetFailed",
+			Message: "Ovirt client Get operation failed",
 		})
 		if err = r.Status().Update(ctx, vm); err != nil {
 			log.Error(err, "Failed to update VirtualMachine status")

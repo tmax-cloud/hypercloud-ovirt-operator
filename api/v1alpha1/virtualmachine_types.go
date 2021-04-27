@@ -39,18 +39,19 @@ type VirtualMachineStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Conditions represent the latest available observations of an object's state
+	// Conditions represent the latest available observations of an VirtualMachine object's state
 	//+patchMergeKey=type
 	//+patchStrategy=merge
 	//+listType=map
 	//+listMapKey=type
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 }
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
-//+kubebuilder:printcolumn:name="Template",type=string,JSONPath=`.spec.template`
-//+kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.conditions[?(@.type==\"ready\")].status`
+//+kubebuilder:printcolumn:name="Template",type=string,JSONPath=".spec.template"
+//+kubebuilder:printcolumn:name="Ready",type=string,JSONPath=".status.conditions[?(@.type==\"Ready\")].status"
+//+kubebuilder:printcolumn:name="Age",type=date,JSONPath=".metadata.creationTimestamp"
 
 // VirtualMachine is the Schema for the virtualmachines API
 type VirtualMachine struct {
