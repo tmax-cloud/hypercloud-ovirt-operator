@@ -127,7 +127,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			// Run finalization logic for virtualMachineFinalizer. If the
 			// finalization logic fails, don't remove the finalizer so
 			// that we can retry during the next reconciliation.
-			if err := r.Actuator.FinalizeVm(log, vm); err != nil {
+			if err := r.Actuator.FinalizeVm(vm); err != nil {
 				log.Error(err, "Failed to finalize VirtualMachine")
 				return ctrl.Result{}, err
 			}
@@ -152,11 +152,11 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	// Check if the VirtualMachine already exists, if not create a new one
-	err = r.Actuator.GetVM(log, vm)
+	err = r.Actuator.GetVM(vm)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("Creating a new VirtualMachine", "vm.Name", vm.Name)
-			err = r.Actuator.AddVM(log, vm)
+			log.Info("Creating a new VirtualMachine")
+			err = r.Actuator.AddVM(vm)
 			if err != nil {
 				meta.SetStatusCondition(&vm.Status.Conditions, v1.Condition{
 					Type:    vmtypes.VmReady,
@@ -168,7 +168,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 					log.Error(err, "Failed to update VirtualMachine status")
 					return ctrl.Result{}, err
 				}
-				log.Error(err, "Failed to create new VirtualMachine", "vm.Name", vm.Name)
+				log.Error(err, "Failed to create new VirtualMachine")
 				return ctrl.Result{}, err
 			}
 			meta.SetStatusCondition(&vm.Status.Conditions, v1.Condition{
@@ -182,6 +182,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 				return ctrl.Result{}, err
 			}
 			// VirtualMachine created successfully - return and requeue
+			log.Info("Add vm successfully")
 			return ctrl.Result{Requeue: true}, nil
 		}
 
@@ -198,7 +199,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		log.Error(err, "Failed to get VirtualMachine")
 		return ctrl.Result{}, err
 	}
-	log.Info("VirtualMachine exists", "vm.Name", vm.Name)
+	log.Info("VirtualMachine exists")
 
 	return ctrl.Result{}, nil
 }
