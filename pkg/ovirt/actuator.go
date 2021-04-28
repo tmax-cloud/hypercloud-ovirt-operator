@@ -3,7 +3,6 @@ package ovirt
 import (
 	"time"
 
-	"github.com/go-logr/logr"
 	ovirtsdk4 "github.com/ovirt/go-ovirt"
 	vmv1alpha1 "github.com/tmax-cloud/hypercloud-ovirt-operator/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
@@ -59,10 +58,9 @@ func (actuator *OvirtActuator) createConnection() (*ovirtsdk4.Connection, error)
 }
 
 // AddVM gets the virtual machine from Ovirt cluster
-func (actuator *OvirtActuator) GetVM(log logr.Logger, m *vmv1alpha1.VirtualMachine) error {
+func (actuator *OvirtActuator) GetVM(m *vmv1alpha1.VirtualMachine) error {
 	conn, err := actuator.getConnection()
 	if err != nil {
-		log.Error(err, "Make connection failed")
 		return err
 	}
 	defer conn.Close()
@@ -70,7 +68,6 @@ func (actuator *OvirtActuator) GetVM(log logr.Logger, m *vmv1alpha1.VirtualMachi
 	vmsService := conn.SystemService().VmsService()
 	vmsResponse, err := vmsService.List().Search("name=" + m.Name).Send()
 	if err != nil {
-		log.Error(err, "Failed to get vm list")
 		return err
 	}
 	vms, _ := vmsResponse.Vms()
@@ -82,10 +79,9 @@ func (actuator *OvirtActuator) GetVM(log logr.Logger, m *vmv1alpha1.VirtualMachi
 }
 
 // AddVM adds the virtual machine to Ovirt cluster
-func (actuator *OvirtActuator) AddVM(log logr.Logger, m *vmv1alpha1.VirtualMachine) error {
+func (actuator *OvirtActuator) AddVM(m *vmv1alpha1.VirtualMachine) error {
 	conn, err := actuator.getConnection()
 	if err != nil {
-		log.Error(err, "Make connection failed")
 		return err
 	}
 	defer conn.Close()
@@ -93,7 +89,6 @@ func (actuator *OvirtActuator) AddVM(log logr.Logger, m *vmv1alpha1.VirtualMachi
 	vmsService := conn.SystemService().VmsService()
 	cluster, err := ovirtsdk4.NewClusterBuilder().Name("Default").Build()
 	if err != nil {
-		log.Error(err, "Failed to build cluster")
 		return err
 	}
 	if m.Spec.Template == "" {
@@ -101,32 +96,24 @@ func (actuator *OvirtActuator) AddVM(log logr.Logger, m *vmv1alpha1.VirtualMachi
 	}
 	template, err := ovirtsdk4.NewTemplateBuilder().Name(m.Spec.Template).Build()
 	if err != nil {
-		log.Error(err, "Failed to build template")
 		return err
 	}
 	vm, err := ovirtsdk4.NewVmBuilder().Name(m.Name).Cluster(cluster).Template(template).Build()
 	if err != nil {
-		log.Error(err, "Failed to build vm")
 		return err
 	}
-	resp, err := vmsService.Add().Vm(vm).Send()
+	_, err = vmsService.Add().Vm(vm).Send()
 	if err != nil {
-		log.Error(err, "Failed to add vm")
 		return err
 	}
-
-	vm, _ = resp.Vm()
-	name, _ := vm.Name()
-	log.Info("Add vm successfully", "vm.Name", name)
 
 	return nil
 }
 
 // FinalizeVm removes the virtual machine from Ovirt cluster
-func (actuator *OvirtActuator) FinalizeVm(log logr.Logger, m *vmv1alpha1.VirtualMachine) error {
+func (actuator *OvirtActuator) FinalizeVm(m *vmv1alpha1.VirtualMachine) error {
 	conn, err := actuator.getConnection()
 	if err != nil {
-		log.Error(err, "Make connection failed")
 		return err
 	}
 	defer conn.Close()
@@ -134,18 +121,20 @@ func (actuator *OvirtActuator) FinalizeVm(log logr.Logger, m *vmv1alpha1.Virtual
 	vmsService := conn.SystemService().VmsService()
 	vmsResponse, err := vmsService.List().Search("name=" + m.Name).Send()
 	if err != nil {
-		log.Error(err, "Failed to search vms")
 		return err
 	}
 	vms, _ := vmsResponse.Vms()
-	id, _ := vms.Slice()[0].Id()
+	vmss := vms.Slice()
+	if vmss == nil {
+		// VM not found in Ovirt. Ignoring since object must be deleted or not created
+		return nil
+	}
+	id, _ := vmss[0].Id()
 	vmService := vmsService.VmService(id)
 	_, err = vmService.Remove().Send()
 	if err != nil {
-		log.Error(err, "Failed to remove vm")
 		return err
 	}
 
-	log.Info("Remove vm successfully", "vm.Name", m.Name)
 	return nil
 }
