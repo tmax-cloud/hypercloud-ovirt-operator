@@ -72,7 +72,6 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	if vm.Status.Conditions == nil {
-		vm.Status.Conditions = make([]v1.Condition, 0)
 		meta.SetStatusCondition(&vm.Status.Conditions, v1.Condition{
 			Type:    vmtypes.VmReady,
 			Status:  v1.ConditionUnknown,
