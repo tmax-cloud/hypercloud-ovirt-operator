@@ -40,7 +40,7 @@ const (
 	virtualMachineFinalizer = "vm.tmaxcloud.com/finalizer"
 )
 
-var ovirtNamespacedName = types.NamespacedName{Name: "ovirt-master", Namespace: "default"}
+var ovirtNamespacedName = types.NamespacedName{Name: "ovirt-master", Namespace: corev1.NamespaceDefault}
 
 // VirtualMachineReconciler reconciles a VirtualMachine object
 type VirtualMachineReconciler struct {
