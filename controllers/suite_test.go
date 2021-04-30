@@ -17,11 +17,16 @@ limitations under the License.
 package controllers
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -32,6 +37,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	vmv1alpha1 "github.com/tmax-cloud/hypercloud-ovirt-operator/api/v1alpha1"
+	"github.com/tmax-cloud/hypercloud-ovirt-operator/pkg/ovirt"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -75,12 +81,48 @@ var _ = BeforeSuite(func() {
 	k8sManager, err := ctrl.NewManager(cfg, ctrl.Options{Scheme: scheme.Scheme})
 	Expect(err).ToNot(HaveOccurred())
 
+	const (
+		SecretName = "ovirt-master"
+
+		timeout  = time.Second * 10
+		interval = time.Millisecond * 250
+	)
+
 	err = (&VirtualMachineReconciler{
-		Client: k8sManager.GetClient(),
-		Scheme: k8sManager.GetScheme(),
-		Log:    ctrl.Log.WithName("controllers").WithName("VirtualMachine"),
+		Client:   k8sManager.GetClient(),
+		Scheme:   k8sManager.GetScheme(),
+		Log:      ctrl.Log.WithName("controllers").WithName("VirtualMachine"),
+		Actuator: ovirt.NewActuator(),
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
+
+	secret := &corev1.Secret{
+		TypeMeta: v1.TypeMeta{
+			Kind:       "Secret",
+			APIVersion: "v1",
+		},
+		ObjectMeta: v1.ObjectMeta{
+			Name:      SecretName,
+			Namespace: corev1.NamespaceDefault,
+		},
+		Type: "Opaque",
+		StringData: map[string]string{
+			"url":  "https://node1.test.dom/ovirt-engine/api",
+			"name": "admin@internal",
+			"pass": "1",
+		},
+	}
+	Expect(k8sClient.Create(context.Background(), secret)).Should(Succeed())
+
+	secretLookupKey := types.NamespacedName{Name: SecretName, Namespace: corev1.NamespaceDefault}
+	createdSecret := &corev1.Secret{}
+	Eventually(func() error {
+		return k8sClient.Get(context.Background(), secretLookupKey, createdSecret)
+	}, timeout, interval).Should(Succeed())
+
+	Expect(string(createdSecret.Data["url"])).Should(Equal("https://node1.test.dom/ovirt-engine/api"))
+	Expect(string(createdSecret.Data["name"])).Should(Equal("admin@internal"))
+	Expect(string(createdSecret.Data["pass"])).Should(Equal("1"))
 
 	go func() {
 		err = k8sManager.Start(ctrl.SetupSignalHandler())
