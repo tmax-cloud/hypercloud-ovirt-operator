@@ -92,7 +92,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 				Type:    vmtypes.VmReady,
 				Status:  v1.ConditionFalse,
 				Reason:  "SecretNotFound",
-				Message: "Ovirt master secret resource is missing",
+				Message: err.Error(),
 			})
 			if err = r.Status().Update(ctx, vm); err != nil {
 				log.Error(err, "Failed to update VirtualMachine status")
@@ -105,7 +105,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			Type:    vmtypes.VmReady,
 			Status:  v1.ConditionFalse,
 			Reason:  "ClientGetFailed",
-			Message: "Kubernetes client Get operation failed",
+			Message: err.Error(),
 		})
 		if err = r.Status().Update(ctx, vm); err != nil {
 			log.Error(err, "Failed to update VirtualMachine status")
@@ -161,7 +161,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 					Type:    vmtypes.VmReady,
 					Status:  v1.ConditionFalse,
 					Reason:  "VmAddFailed",
-					Message: "The VM could not be created due to Ovirt Master error",
+					Message: err.Error(),
 				})
 				if err = r.Status().Update(ctx, vm); err != nil {
 					log.Error(err, "Failed to update VirtualMachine status")
@@ -189,7 +189,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			Type:    vmtypes.VmReady,
 			Status:  v1.ConditionFalse,
 			Reason:  "OvirtClientGetFailed",
-			Message: "Ovirt client Get operation failed",
+			Message: err.Error(),
 		})
 		if err = r.Status().Update(ctx, vm); err != nil {
 			log.Error(err, "Failed to update VirtualMachine status")
