@@ -21,39 +21,40 @@ type EventListener interface {
 	FinalizeVm(m *vmv1alpha1.VirtualMachine) error
 }
 
-// OvirtActuator contains connection data
-type OvirtActuator struct {
+// OvirtListener contains connection data
+type OvirtListener struct {
 	conn *ovirtsdk4.Connection
 	url  string
 	name string
 	pass string
 }
 
-// NewActuator creates new OvirtActuator
-func NewActuator() *OvirtActuator {
-	return &OvirtActuator{}
+// Newlistener creates new OvirtListener
+func NewListener() *OvirtListener {
+	return &OvirtListener{}
 }
 
-func (actuator *OvirtActuator) SetListener(secret *corev1.Secret) {
-	actuator.url = string(secret.Data["url"])
-	actuator.name = string(secret.Data["name"])
-	actuator.pass = string(secret.Data["pass"])
+// SetListener sets listener information
+func (listener *OvirtListener) SetListener(secret *corev1.Secret) {
+	listener.url = string(secret.Data["url"])
+	listener.name = string(secret.Data["name"])
+	listener.pass = string(secret.Data["pass"])
 }
 
-func (actuator *OvirtActuator) getConnection() (*ovirtsdk4.Connection, error) {
+func (listener *OvirtListener) getConnection() (*ovirtsdk4.Connection, error) {
 	var err error
-	if actuator.conn == nil || actuator.conn.Test() != nil {
-		actuator.conn, err = actuator.createConnection()
+	if listener.conn == nil || listener.conn.Test() != nil {
+		listener.conn, err = listener.createConnection()
 	}
 
-	return actuator.conn, err
+	return listener.conn, err
 }
 
-func (actuator *OvirtActuator) createConnection() (*ovirtsdk4.Connection, error) {
+func (listener *OvirtListener) createConnection() (*ovirtsdk4.Connection, error) {
 	conn, err := ovirtsdk4.NewConnectionBuilder().
-		URL(actuator.url).
-		Username(actuator.name).
-		Password(actuator.pass).
+		URL(listener.url).
+		Username(listener.name).
+		Password(listener.pass).
 		Insecure(true).
 		Compress(true).
 		Timeout(Timeout).
@@ -65,8 +66,8 @@ func (actuator *OvirtActuator) createConnection() (*ovirtsdk4.Connection, error)
 }
 
 // AddVM gets the virtual machine from Ovirt cluster
-func (actuator *OvirtActuator) GetVM(m *vmv1alpha1.VirtualMachine) error {
-	conn, err := actuator.getConnection()
+func (listener *OvirtListener) GetVM(m *vmv1alpha1.VirtualMachine) error {
+	conn, err := listener.getConnection()
 	if err != nil {
 		return err
 	}
@@ -86,8 +87,8 @@ func (actuator *OvirtActuator) GetVM(m *vmv1alpha1.VirtualMachine) error {
 }
 
 // AddVM adds the virtual machine to Ovirt cluster
-func (actuator *OvirtActuator) AddVM(m *vmv1alpha1.VirtualMachine) error {
-	conn, err := actuator.getConnection()
+func (listener *OvirtListener) AddVM(m *vmv1alpha1.VirtualMachine) error {
+	conn, err := listener.getConnection()
 	if err != nil {
 		return err
 	}
@@ -118,8 +119,8 @@ func (actuator *OvirtActuator) AddVM(m *vmv1alpha1.VirtualMachine) error {
 }
 
 // FinalizeVm removes the virtual machine from Ovirt cluster
-func (actuator *OvirtActuator) FinalizeVm(m *vmv1alpha1.VirtualMachine) error {
-	conn, err := actuator.getConnection()
+func (listener *OvirtListener) FinalizeVm(m *vmv1alpha1.VirtualMachine) error {
+	conn, err := listener.getConnection()
 	if err != nil {
 		return err
 	}

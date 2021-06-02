@@ -10,8 +10,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func getActuator() *OvirtActuator {
-	a := NewActuator()
+func getActuator() *OvirtListener {
+	a := NewListener()
 	secret := &v1.Secret{Data: map[string][]byte{
 		"url":  []byte("https://node1.test.dom/ovirt-engine/api"),
 		"name": []byte("admin@internal"),
@@ -29,9 +29,9 @@ func getVM() *v1alpha1.VirtualMachine {
 	return vm
 }
 
-func TestSetActuator(t *testing.T) {
-	expected := &OvirtActuator{url: "", name: "", pass: ""}
-	actual := NewActuator()
+func TestSetListener(t *testing.T) {
+	expected := &OvirtListener{url: "", name: "", pass: ""}
+	actual := NewListener()
 	secret := &v1.Secret{}
 	actual.SetListener(secret)
 
@@ -39,7 +39,7 @@ func TestSetActuator(t *testing.T) {
 		t.Error("expected:", expected, "actual:", actual)
 	}
 
-	expected = &OvirtActuator{
+	expected = &OvirtListener{
 		url:  "https://node1.test.dom/ovirt-engine/api",
 		name: "admin@internal",
 		pass: "1"}

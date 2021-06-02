@@ -84,7 +84,7 @@ func main() {
 		Log:    ctrl.Log.WithName("controllers").WithName("VirtualMachine"),
 		Scheme: mgr.GetScheme(),
 	}
-	vmr.Register(ovirt.NewActuator())
+	vmr.Register(ovirt.NewListener())
 	if err = (vmr).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "VirtualMachine")
 		os.Exit(1)

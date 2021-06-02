@@ -93,7 +93,7 @@ var _ = BeforeSuite(func() {
 		Log:    ctrl.Log.WithName("controllers").WithName("VirtualMachine"),
 		Scheme: k8sManager.GetScheme(),
 	}
-	vmr.Register(ovirt.NewActuator())
+	vmr.Register(ovirt.NewListener())
 	err = (vmr).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
