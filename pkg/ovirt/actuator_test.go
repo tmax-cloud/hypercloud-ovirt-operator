@@ -17,7 +17,7 @@ func getActuator() *OvirtActuator {
 		"name": []byte("admin@internal"),
 		"pass": []byte("1"),
 	}}
-	a.SetActuator(secret)
+	a.SetListener(secret)
 	return a
 }
 
@@ -33,7 +33,7 @@ func TestSetActuator(t *testing.T) {
 	expected := &OvirtActuator{url: "", name: "", pass: ""}
 	actual := NewActuator()
 	secret := &v1.Secret{}
-	actual.SetActuator(secret)
+	actual.SetListener(secret)
 
 	if expected.url != actual.url || expected.name != actual.name || expected.pass != actual.pass {
 		t.Error("expected:", expected, "actual:", actual)

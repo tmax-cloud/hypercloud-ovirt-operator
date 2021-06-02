@@ -14,6 +14,13 @@ const (
 	Timeout = 10 * time.Second
 )
 
+type EventListener interface {
+	SetListener(secret *corev1.Secret)
+	GetVM(m *vmv1alpha1.VirtualMachine) error
+	AddVM(m *vmv1alpha1.VirtualMachine) error
+	FinalizeVm(m *vmv1alpha1.VirtualMachine) error
+}
+
 // OvirtActuator contains connection data
 type OvirtActuator struct {
 	conn *ovirtsdk4.Connection
@@ -27,7 +34,7 @@ func NewActuator() *OvirtActuator {
 	return &OvirtActuator{}
 }
 
-func (actuator *OvirtActuator) SetActuator(secret *corev1.Secret) {
+func (actuator *OvirtActuator) SetListener(secret *corev1.Secret) {
 	actuator.url = string(secret.Data["url"])
 	actuator.name = string(secret.Data["name"])
 	actuator.pass = string(secret.Data["pass"])

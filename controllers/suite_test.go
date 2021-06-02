@@ -88,12 +88,13 @@ var _ = BeforeSuite(func() {
 		interval = time.Millisecond * 250
 	)
 
-	err = (&VirtualMachineReconciler{
-		Client:   k8sManager.GetClient(),
-		Scheme:   k8sManager.GetScheme(),
-		Log:      ctrl.Log.WithName("controllers").WithName("VirtualMachine"),
-		Actuator: ovirt.NewActuator(),
-	}).SetupWithManager(k8sManager)
+	vmr := &VirtualMachineReconciler{
+		Client: k8sManager.GetClient(),
+		Log:    ctrl.Log.WithName("controllers").WithName("VirtualMachine"),
+		Scheme: k8sManager.GetScheme(),
+	}
+	vmr.Register(ovirt.NewActuator())
+	err = (vmr).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	secret := &corev1.Secret{
