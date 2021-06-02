@@ -42,12 +42,20 @@ const (
 
 var ovirtNamespacedName = types.NamespacedName{Name: "ovirt-master", Namespace: corev1.NamespaceDefault}
 
+type Event interface {
+	Register(ovirt.EventListener)
+}
+
 // VirtualMachineReconciler reconciles a VirtualMachine object
 type VirtualMachineReconciler struct {
 	client.Client
 	Log      logr.Logger
 	Scheme   *runtime.Scheme
-	Actuator *ovirt.OvirtActuator
+	Listener ovirt.EventListener
+}
+
+func (r *VirtualMachineReconciler) Register(listener ovirt.EventListener) {
+	r.Listener = listener
 }
 
 //+kubebuilder:rbac:groups=vm.tmaxcloud.com,resources=virtualmachines,verbs=get;list;watch;create;update;patch;delete
@@ -116,7 +124,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	// set actuator information
-	r.Actuator.SetActuator(secret)
+	r.Listener.SetListener(secret)
 
 	// Check if the VM instance is marked to be deleted, which is
 	// indicated by the deletion timestamp being set.
@@ -126,7 +134,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			// Run finalization logic for virtualMachineFinalizer. If the
 			// finalization logic fails, don't remove the finalizer so
 			// that we can retry during the next reconciliation.
-			if err := r.Actuator.FinalizeVm(vm); err != nil {
+			if err := r.Listener.FinalizeVm(vm); err != nil {
 				log.Error(err, "Failed to finalize VirtualMachine")
 				return ctrl.Result{}, err
 			}
@@ -151,11 +159,11 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	// Check if the VirtualMachine already exists, if not create a new one
-	err = r.Actuator.GetVM(vm)
+	err = r.Listener.GetVM(vm)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			log.Info("Creating a new VirtualMachine")
-			err = r.Actuator.AddVM(vm)
+			err = r.Listener.AddVM(vm)
 			if err != nil {
 				meta.SetStatusCondition(&vm.Status.Conditions, v1.Condition{
 					Type:    vmtypes.VmReady,

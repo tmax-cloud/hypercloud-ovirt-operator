@@ -79,12 +79,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controllers.VirtualMachineReconciler{
-		Client:   mgr.GetClient(),
-		Log:      ctrl.Log.WithName("controllers").WithName("VirtualMachine"),
-		Scheme:   mgr.GetScheme(),
-		Actuator: ovirt.NewActuator(),
-	}).SetupWithManager(mgr); err != nil {
+	vmr := &controllers.VirtualMachineReconciler{
+		Client: mgr.GetClient(),
+		Log:    ctrl.Log.WithName("controllers").WithName("VirtualMachine"),
+		Scheme: mgr.GetScheme(),
+	}
+	vmr.Register(ovirt.NewListener())
+	if err = (vmr).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "VirtualMachine")
 		os.Exit(1)
 	}
